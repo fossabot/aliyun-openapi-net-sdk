@@ -42,6 +42,11 @@ namespace Aliyun.Acs.Core
         private readonly IClientProfile clientProfile;
         private readonly AlibabaCloudCredentialsProvider credentialsProvider;
         private readonly UserAgent userAgentConfig = new UserAgent();
+        private readonly HttpResponse httpResponse = new HttpResponse();
+
+        private bool autoRetry = true;
+
+        private int maxRetryNumber = 3;
 
         public DefaultAcsClient()
         {
@@ -87,15 +92,11 @@ namespace Aliyun.Acs.Core
 
         public bool IgnoreCertificate { get; private set; }
 
-        private int maxRetryNumber = 3;
-
         public int MaxRetryNumber
         {
             get { return maxRetryNumber; }
             set { maxRetryNumber = value; }
         }
-
-        private bool autoRetry = true;
 
         public bool AutoRetry
         {
@@ -244,7 +245,9 @@ namespace Aliyun.Acs.Core
                 {
                     if (500 <= httpResponse.Status)
                     {
-                        throw new ServerException(error.ErrorCode, error.ErrorMessage, error.RequestId);
+                        throw new ServerException(error.ErrorCode,
+                            string.Format("{0}, the request url is {1}, the RequestId is {2}.", error.ErrorMessage,
+                                httpResponse.Url ?? "empty", error.RequestId));
                     }
 
                     if (400 == httpResponse.Status && (error.ErrorCode.Equals("SignatureDoesNotMatch") ||
@@ -272,12 +275,12 @@ namespace Aliyun.Acs.Core
             catch (ServerException ex)
             {
                 SerilogHelper.LogException(ex, ex.ErrorCode, ex.ErrorMessage);
-                throw new ServerException(ex.ErrorCode, ex.ErrorMessage);
+                throw new ServerException(ex.ErrorCode, ex.ErrorMessage, ex.RequestId);
             }
             catch (ClientException ex)
             {
                 SerilogHelper.LogException(ex, ex.ErrorCode, ex.ErrorMessage);
-                throw new ClientException(ex.ErrorCode, ex.ErrorMessage);
+                throw new ClientException(ex.ErrorCode, ex.ErrorMessage, ex.RequestId);
             }
 
             var t = Activator.CreateInstance<T>();
@@ -427,7 +430,7 @@ namespace Aliyun.Acs.Core
 
         public virtual HttpResponse GetResponse(HttpRequest httpRequest)
         {
-            return HttpResponse.GetResponse(httpRequest);
+            return httpResponse.GetResponse(httpRequest);
         }
 
         public void AppendUserAgent(string key, string value)

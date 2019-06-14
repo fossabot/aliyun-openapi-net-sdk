@@ -1,4 +1,4 @@
-/*
+﻿/*
  * Licensed to the Apache Software Foundation (ASF) under one
  * or more contributor license agreements.  See the NOTICE file
  * distributed with this work for additional information
@@ -35,6 +35,12 @@ namespace Aliyun.Acs.Core.Regions
     internal class DescribeEndpointServiceImpl : DescribeEndpointService
     {
         private const string DEFAULT_ENDPOINT_TYPE = "openAPI";
+        private readonly HttpResponse httpResponse;
+
+        public DescribeEndpointServiceImpl()
+        {
+            httpResponse = new HttpResponse();
+        }
 
         public DescribeEndpointResponse DescribeEndpoint(string regionId, string serviceCode, string endpointType,
             Credential credential, LocationConfig locationConfig)
@@ -140,7 +146,7 @@ namespace Aliyun.Acs.Core.Regions
 
         public virtual HttpResponse GetResponse(HttpRequest httpRequest)
         {
-            return HttpResponse.GetResponse(httpRequest);
+            return httpResponse.GetResponse(httpRequest);
         }
     }
 }

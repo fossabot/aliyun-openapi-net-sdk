@@ -19,12 +19,17 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Net;
 using System.Text;
 
+using Aliyun.Acs.Core.Exceptions;
 using Aliyun.Acs.Core.Http;
 
+using Moq;
+
 using Xunit;
+using Xunit.Abstractions;
 
 namespace Aliyun.Acs.Core.Tests.Units.Http
 {
@@ -39,12 +44,12 @@ namespace Aliyun.Acs.Core.Tests.Units.Http
             var content = Encoding.ASCII.GetBytes("someString");
             request.SetContent(content, "UTF-8", FormatType.FORM);
             request.Method = MethodType.GET;
-            var response = HttpResponse.GetResponse(request);
+            var response = request.GetResponse(request);
             Assert.Equal("UTF-8", response.Encoding);
             Assert.Equal(MethodType.GET, response.Method);
 
             // When timeout!=0
-            response = HttpResponse.GetResponse(request, 100000);
+            response = request.GetResponse(request, 100000);
 
             // Done With No Exception
         }
@@ -53,7 +58,8 @@ namespace Aliyun.Acs.Core.Tests.Units.Http
         public void GetWebRequest()
         {
             var request = HttpRequestTest.SetContent();
-            var httpWebRequest = HttpResponse.GetWebRequest(request);
+            var httpResponse = new HttpResponse();
+            var httpWebRequest = httpResponse.GetWebRequest(request);
             Assert.IsType<HttpWebRequest>(httpWebRequest);
             Assert.Equal("application/octet-stream", httpWebRequest.ContentType);
 
@@ -61,7 +67,7 @@ namespace Aliyun.Acs.Core.Tests.Units.Http
             request.Headers.Add("Date", "Thu, 24 Jan 2019 05:16:46 GMT");
 
             request.Method = MethodType.POST;
-            httpWebRequest = HttpResponse.GetWebRequest(request);
+            httpWebRequest = httpResponse.GetWebRequest(request);
             Assert.IsType<HttpWebRequest>(httpWebRequest);
             Assert.Equal("application/octet-stream", httpWebRequest.ContentType);
         }
@@ -72,7 +78,7 @@ namespace Aliyun.Acs.Core.Tests.Units.Http
             var request = HttpRequestTest.SetContent();
             request.SetHttpsInsecure(true);
 
-            var httpWebRequest = HttpResponse.GetWebRequest(request);
+            var httpWebRequest = new HttpResponse().GetWebRequest(request);
         }
 
         [Fact]
@@ -81,21 +87,23 @@ namespace Aliyun.Acs.Core.Tests.Units.Http
             var request = HttpRequestTest.SetContent();
             request.WebProxy = new WebProxy();
 
-            var httpWebRequest = HttpResponse.GetWebRequest(request);
+            var httpWebRequest = new HttpResponse().GetWebRequest(request);
         }
 
         [Fact]
         public void GetWebRequestWithTimeout()
         {
             var request = HttpRequestTest.SetContent();
-            var httpWebRequest = HttpResponse.GetWebRequest(request);
+            var httpResponse = new HttpResponse();
+
+            var httpWebRequest = httpResponse.GetWebRequest(request);
 
             Assert.Equal(5000, httpWebRequest.Timeout);
             Assert.Equal(10000, httpWebRequest.ReadWriteTimeout);
 
             request.SetConnectTimeoutInMilliSeconds(1024);
             request.SetReadTimeoutInMilliSeconds(2048);
-            httpWebRequest = HttpResponse.GetWebRequest(request);
+            httpWebRequest = httpResponse.GetWebRequest(request);
 
             Assert.Equal(2048, httpWebRequest.ReadWriteTimeout);
             Assert.Equal(1024, httpWebRequest.Timeout);
@@ -166,6 +174,80 @@ namespace Aliyun.Acs.Core.Tests.Units.Http
             Assert.Equal(content, instance.Content);
             Assert.Equal("UTF-8", instance.Encoding);
             Assert.Equal(FormatType.JSON, instance.ContentType);
+        }
+
+        [Fact]
+        public void TestGetResponseWithIOException()
+        {
+            var request = HttpRequestTest.SetContent();
+
+            var mockHttpWebRequest = new Mock<HttpWebRequest>();
+            mockHttpWebRequest.Setup(f => f.GetResponse())
+                .Throws<IOException>();
+
+            var mockHttpResponse = new Mock<HttpResponse>();
+            mockHttpResponse.Setup(f => f.GetWebRequest(It.IsAny<HttpRequest>()))
+                .Returns(mockHttpWebRequest.Object);
+
+            var httpResponse = mockHttpResponse.Object;
+
+            var exception = Assert.Throws<ClientException>(() =>
+            {
+                httpResponse.GetResponse(request);
+            });
+
+            Assert.NotNull(exception);
+            Assert.Contains("IOException", exception.ErrorMessage);
+        }
+
+        [Fact]
+        public void TestGetResponseWithWithWebException()
+        {
+            var request = HttpRequestTest.SetContent();
+
+            var webException = new WebException();
+
+            var mockHttpWebRequest = new Mock<HttpWebRequest>();
+            mockHttpWebRequest.Setup(f => f.GetResponse())
+                .Throws(webException);
+
+            var mockHttpResponse = new Mock<HttpResponse>();
+            mockHttpResponse.Setup(f => f.GetWebRequest(It.IsAny<HttpRequest>()))
+                .Returns(mockHttpWebRequest.Object);
+
+            var httpResponse = mockHttpResponse.Object;
+
+            var exception = Assert.Throws<ClientException>(() =>
+            {
+                httpResponse.GetResponse(request);
+            });
+
+            Assert.NotNull(exception);
+            Assert.Contains("HttpWebRequest WebException occured", exception.ErrorMessage);
+        }
+
+        [Fact]
+        public void TestGetResponseWithException()
+        {
+            var request = HttpRequestTest.SetContent();
+
+            var mockHttpWebRequest = new Mock<HttpWebRequest>();
+            mockHttpWebRequest.Setup(f => f.GetResponse())
+                .Throws<Exception>();
+
+            var mockHttpResponse = new Mock<HttpResponse>();
+            mockHttpResponse.Setup(f => f.GetWebRequest(It.IsAny<HttpRequest>()))
+                .Returns(mockHttpWebRequest.Object);
+
+            var httpResponse = mockHttpResponse.Object;
+
+            var exception = Assert.Throws<ClientException>(() =>
+            {
+                httpResponse.GetResponse(request);
+            });
+
+            Assert.NotNull(exception);
+            Assert.Equal("SDK.Exception", exception.ErrorCode);
         }
     }
 }
